@@ -22,3 +22,6 @@ venv/
 data/
 logs/
 .ipynb_checkpoints
+tb_logs/
+submissions/
+model_bins/

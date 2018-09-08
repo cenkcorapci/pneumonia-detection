@@ -11,3 +11,4 @@ graphviz
 unidecode
 tabulate
 livelossplot
+scikit-image
