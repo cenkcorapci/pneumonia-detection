@@ -19,11 +19,15 @@ from config import *
 
 
 class ResNetModel:
-    def __init__(self, nb_epochs=20, early_stopping_patience=4, n_valid_samples=2560, debug_sample_size=None):
+    def __init__(self, nb_epochs=20, image_size=256, early_stopping_patience=4, n_valid_samples=4096,
+                 augment_images=True,
+                 debug_sample_size=None):
         self.model_name = 'resnet'
         self.weight_file_path = MODEL_BINARIES_PATH + self.model_name + '.h5'
         self.n_valid_samples = n_valid_samples
         self.nb_epochs = nb_epochs
+        self.image_size = image_size
+        self.augment_images = augment_images
 
         learning_rate_callback = tf.keras.callbacks.LearningRateScheduler(self.cosine_annealing)
 
@@ -38,6 +42,8 @@ class ResNetModel:
                                                 verbose=1,
                                                 factor=0.5,
                                                 min_lr=0.0001))
+        self.callbacks.append(ModelCheckpoint(self.weight_file_path, monitor='val_loss', save_best_only=True))
+
         if debug_sample_size is not None:
             self.debug_sample_size = debug_sample_size
         self.load_data()
@@ -140,10 +146,12 @@ class ResNetModel:
 
     def train(self):
         # create train and validation generators
-        train_gen = generator(TRAIN_IMAGES_PATH, self.train_filenames, self.pneumonia_locations, batch_size=16, image_size=256,
+        train_gen = generator(TRAIN_IMAGES_PATH, self.train_filenames, self.pneumonia_locations, batch_size=16,
+                              image_size=self.image_size,
                               shuffle=True,
-                              augment=True, predict=False)
-        valid_gen = generator(TRAIN_IMAGES_PATH, self.valid_filenames, self.pneumonia_locations, batch_size=16, image_size=256,
+                              augment=self.augment_images, predict=False)
+        valid_gen = generator(TRAIN_IMAGES_PATH, self.valid_filenames, self.pneumonia_locations, batch_size=16,
+                              image_size=self.image_size,
                               shuffle=False,
                               predict=False)
 
@@ -221,6 +229,7 @@ class ResNetModel:
             sub.index.names = ['patientId']
             sub.columns = ['PredictionString']
             sub.to_csv(SUBMISSIONS_FOLDER_PATH + self.model_name + '_submission.csv')
+            logging.info("Submission file is ready, good luck!")
 
 
 if __name__ == "__main__":
