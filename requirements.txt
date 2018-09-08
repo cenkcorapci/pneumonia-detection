@@ -1,0 +1,13 @@
+pydicom
+pandas
+numpy
+IPython
+pandas
+keras
+matplotlib
+sklearn
+h5py
+graphviz
+unidecode
+tabulate
+livelossplot
