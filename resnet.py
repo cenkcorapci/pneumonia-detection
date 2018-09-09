@@ -1,44 +1,36 @@
-import os
-import csv
-import random
-import pydicom
-import numpy as np
-import pandas as pd
-from skimage import measure
-from skimage.transform import resize
-import keras
-from keras.layers import *
-from keras.models import Model
 import tensorflow as tf
 from keras.callbacks import *
-
 from livelossplot import PlotLossesKeras
-from matplotlib import pyplot as plt
-from data_generator import *
+from skimage import measure
+import keras
+from keras.layers import *
 from config import *
+from data_generator import *
+from ai_utils import *
 
 
 class ResNetModel:
-    def __init__(self, nb_epochs=20, image_size=256, early_stopping_patience=4, n_valid_samples=4096,
-                 augment_images=True,
-                 debug_sample_size=None):
+    def __init__(self, nb_epochs=10, image_size=320, early_stopping_patience=3, n_valid_samples=1500,
+                 batch_size=16, depth=4, channels=16, n_blocks=2, augment_images=True, debug_sample_size=None):
         self.model_name = 'resnet'
         self.weight_file_path = MODEL_BINARIES_PATH + self.model_name + '.h5'
         self.n_valid_samples = n_valid_samples
         self.nb_epochs = nb_epochs
         self.image_size = image_size
         self.augment_images = augment_images
+        self.batch_size = batch_size
+        self.depth = depth
+        self.channels = channels
+        self.n_blocks = n_blocks
 
-        learning_rate_callback = tf.keras.callbacks.LearningRateScheduler(self.cosine_annealing)
-
-        tb_callback = TensorBoard(log_dir=LOGS_PATH, histogram_freq=0, write_graph=True,
+        tb_callback = TensorBoard(log_dir=TB_LOGS_PATH, histogram_freq=0, write_graph=True,
                                   write_images=False, embeddings_freq=0, embeddings_layer_names=None,
                                   embeddings_metadata=None)
 
-        self.callbacks = [learning_rate_callback, tb_callback, PlotLossesKeras()]
-        self.callbacks.append(EarlyStopping(monitor='loss', patience=early_stopping_patience))
-        self.callbacks.append(ReduceLROnPlateau(monitor='loss',
-                                                patience=3,
+        self.callbacks = [tb_callback, PlotLossesKeras()]
+        self.callbacks.append(EarlyStopping(monitor='val_loss', patience=early_stopping_patience))
+        self.callbacks.append(ReduceLROnPlateau(monitor='val_loss',
+                                                patience=2,
                                                 verbose=1,
                                                 factor=0.5,
                                                 min_lr=0.0001))
@@ -63,6 +55,7 @@ class ResNetModel:
         x = keras.layers.BatchNormalization(momentum=0.9999)(x)
         x = keras.layers.LeakyReLU(0)(x)
         x = keras.layers.Conv2D(channels, 3, padding='same', use_bias=False)(x)
+        x = keras.layers.SpatialDropout2D(0.5)(x)
         return keras.layers.add([x, inputs])
 
     def create_network(self, input_size, channels, n_blocks=2, depth=4):
@@ -85,37 +78,12 @@ class ResNetModel:
 
     def compile_network(self):
         # create network and compiler
-        model = self.create_network(input_size=256, channels=32, n_blocks=2, depth=4)
+        model = self.create_network(input_size=self.image_size, channels=self.channels, n_blocks=self.n_blocks,
+                                    depth=self.depth)
         model.compile(optimizer='adam',
-                      loss=self.iou_bce_loss,
-                      metrics=['accuracy', self.mean_iou])
+                      loss=iou_bce_loss,
+                      metrics=['accuracy', mean_iou])
         return model
-
-    # define iou or jaccard loss function
-    def iou_loss(self, y_true, y_pred):
-        y_true = tf.reshape(y_true, [-1])
-        y_pred = tf.reshape(y_pred, [-1])
-        intersection = tf.reduce_sum(y_true * y_pred)
-        score = (intersection + 1.) / (tf.reduce_sum(y_true) + tf.reduce_sum(y_pred) - intersection + 1.)
-        return 1 - score
-
-    # combine bce loss and iou loss
-    def iou_bce_loss(self, y_true, y_pred):
-        return 0.4 * keras.losses.binary_crossentropy(y_true, y_pred) + 0.6 * self.iou_loss(y_true, y_pred)
-
-    # mean iou as a metric
-    def mean_iou(self, y_true, y_pred):
-        y_pred = tf.round(y_pred)
-        intersect = tf.reduce_sum(y_true * y_pred, axis=[1, 2, 3])
-        union = tf.reduce_sum(y_true, axis=[1, 2, 3]) + tf.reduce_sum(y_pred, axis=[1, 2, 3])
-        smooth = tf.ones(tf.shape(intersect))
-        return tf.reduce_mean((intersect + smooth) / (union - intersect + smooth))
-
-    # cosine learning rate annealing
-    def cosine_annealing(self, x):
-        lr = 0.01
-        epochs = 20
-        return lr * (np.cos(np.pi * x / epochs) + 1.) / 2
 
     def load_data(self):
         # load and shuffle filenames
@@ -141,16 +109,18 @@ class ResNetModel:
             self.train()
         else:
             self.model.load_weights(self.weight_file_path)
-            self.model.compile(optimizer='adam', loss=self.iou_bce_loss, metrics=['accuracy', self.mean_iou])
+            self.model.compile(optimizer='adam', loss=iou_bce_loss, metrics=['accuracy', mean_iou])
         return self
 
     def train(self):
         # create train and validation generators
-        train_gen = generator(TRAIN_IMAGES_PATH, self.train_filenames, self.pneumonia_locations, batch_size=16,
+        train_gen = generator(TRAIN_IMAGES_PATH, self.train_filenames, self.pneumonia_locations,
+                              batch_size=self.batch_size,
                               image_size=self.image_size,
                               shuffle=True,
                               augment=self.augment_images, predict=False)
-        valid_gen = generator(TRAIN_IMAGES_PATH, self.valid_filenames, self.pneumonia_locations, batch_size=16,
+        valid_gen = generator(TRAIN_IMAGES_PATH, self.valid_filenames, self.pneumonia_locations,
+                              batch_size=self.batch_size,
                               image_size=self.image_size,
                               shuffle=False,
                               predict=False)
@@ -185,7 +155,7 @@ class ResNetModel:
                                  test_filenames,
                                  None,
                                  batch_size=20,
-                                 image_size=256,
+                                 image_size=self.image_size,
                                  shuffle=False,
                                  predict=True)
 

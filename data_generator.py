@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pydicom
 from skimage.transform import resize
-from tensorflow import keras
+import keras
 
 from config import *
 
@@ -38,13 +38,13 @@ class generator(keras.utils.Sequence):
                 # add 1's at the location of the pneumonia
                 x, y, w, h = location
                 msk[y:y + h, x:x + w] = 1
+        # resize both image and mask
+        img = resize(img, (self.image_size, self.image_size), mode='reflect')
+        msk = resize(msk, (self.image_size, self.image_size), mode='reflect') > 0.5
         # if augment then horizontal flip half the time
         if self.augment and random.random() > 0.5:
             img = np.fliplr(img)
             msk = np.fliplr(msk)
-        # resize both image and mask
-        img = resize(img, (self.image_size, self.image_size), mode='reflect')
-        msk = resize(msk, (self.image_size, self.image_size), mode='reflect') > 0.45
         # add trailing channel dimension
         img = np.expand_dims(img, -1)
         msk = np.expand_dims(msk, -1)
@@ -104,7 +104,7 @@ def get_pneumonia_locations():
         pneumonia = row[5]
         # if row contains pneumonia add label to dictionary
         # which contains a list of pneumonia locations per filename
-        if pneumonia == '1':
+        if pneumonia == 1:
             # convert string to float to int
             location = [int(float(i)) for i in location]
             # save pneumonia location in dictionary
