@@ -42,9 +42,13 @@ class generator(keras.utils.Sequence):
         img = resize(img, (self.image_size, self.image_size), mode='reflect')
         msk = resize(msk, (self.image_size, self.image_size), mode='reflect') > 0.5
         # if augment then horizontal flip half the time
-        if self.augment and random.random() > 0.5:
-            img = np.fliplr(img)
-            msk = np.fliplr(msk)
+        if self.augment and random.random() > 0.4:
+            if random.random() > 0.5:
+                img = np.fliplr(img)
+                msk = np.fliplr(msk)
+            else:
+                img = np.flipud(img)
+                msk = np.flipud(msk)
         # add trailing channel dimension
         img = np.expand_dims(img, -1)
         msk = np.expand_dims(msk, -1)
