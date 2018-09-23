@@ -8,7 +8,6 @@ matplotlib
 sklearn
 h5py
 graphviz
-unidecode
 tabulate
 livelossplot
 scikit-image

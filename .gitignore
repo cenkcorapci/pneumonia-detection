@@ -25,3 +25,4 @@ logs/
 tb_logs/
 submissions/
 model_bins/
+tmp/

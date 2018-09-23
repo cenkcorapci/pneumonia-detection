@@ -1,14 +1,6 @@
-import numpy as np
-
-import tensorflow as tf
 import keras
+import tensorflow as tf
 
-
-# cosine learning rate annealing
-def cosine_annealing(x):
-    lr = 0.01
-    epochs = 20
-    return lr * (np.cos(np.pi * x / epochs) + 1.) / 2
 
 # define iou or jaccard loss function
 def iou_loss(y_true, y_pred):
